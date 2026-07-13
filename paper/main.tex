@@ -1,0 +1,1163 @@
+% !TeX program = xelatex
+% ---------------------------------------------------------------------------
+% Guarantee or Alarm: Statistical Verification for LLM-Assisted Decision
+% Pipelines. A three-layer framework with exact anchors, perturbation
+% checks, and runnable evidence.
+%
+% Compiles with XeLaTeX (MiKTeX / TeX Live) and also with pdfLaTeX
+% (the iftex guard below switches font handling automatically).
+% Build: xelatex main && bibtex main && xelatex main && xelatex main
+% ---------------------------------------------------------------------------
+\documentclass[11pt,a4paper]{article}
+
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+  \usepackage{lmodern}
+\else
+  \usepackage{fontspec}
+  % Defaults to Latin Modern (always available). If the tex-gyre package is
+  % installed (MiKTeX Console -> Packages -> tex-gyre), uncomment for Pagella:
+  % \setmainfont{TeX Gyre Pagella}
+  % \setmonofont[Scale=0.88]{TeX Gyre Cursor}
+\fi
+
+\usepackage[margin=2.7cm]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{microtype}
+\setlength{\emergencystretch}{1.2em}
+\usepackage{enumitem}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{xcolor}
+\usepackage[colorlinks=true,linkcolor=blue!50!black,citecolor=blue!50!black,urlcolor=blue!50!black]{hyperref}
+
+% Skill names are typeset in monospace but may break after hyphens
+% (url-package machinery), so long names fit narrow table columns.
+\DeclareUrlCommand\skillname{\urlstyle{tt}\def\UrlBreaks{\do\-}}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+
+\title{Guarantee or Alarm: Statistical Verification\\
+for LLM-Assisted Decision Pipelines\\[3pt]
+\large A Three-Layer Framework with Exact Anchors,\\
+Perturbation Checks, and Runnable Evidence}
+
+\author{Alvaro Moraes\thanks{Independent researcher.
+E-mail: \texttt{alvaromoraes.ici@gmail.com}.}}
+
+\date{July 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Outputs produced with the help of large language models (LLMs) ---
+extractions, labels, estimates, screens, simulations, recommendations ---
+increasingly feed consequential decisions. Their characteristic failures are
+statistical and \emph{silent}: the pipeline runs, the number is plausible,
+and the loss is realized downstream, where no reviewer connects it to the
+uncalibrated judge, the peeked-at dashboard, or the data-selected
+``winner'' that caused it. We argue that the appropriate response is the
+verification-and-validation (V\&V) discipline of computational science,
+transplanted to LLM-derived outcomes, and we present a working
+implementation. The framework has three layers: \emph{verification of
+tooling} (every statistical procedure an agent carries must reproduce an
+exactly known ground truth --- the analogue of the method of exact
+solutions); \emph{operating-characteristic verification} (demonstrated
+coverage, false-discovery rate, and false-alarm rate on synthetic ground
+truth, with validation proper --- gold-set audits on the live workload ---
+prescribed but distinguished); and \emph{runtime V\&V of outputs} (every
+deliverable carries a stated guarantee where one exists, feeding a named
+loss, or a diagnostic alarm that halts and escalates). The implementation is a library of eleven agent skills ---
+modular, versioned playbooks with dependency-free executable scripts ---
+covering calibrated acceptance gates for LLM verifiers, anytime-valid
+monitoring, prediction-powered inference from model labels, optimal
+experimental design, rare-event and risk-measure estimation, selective and
+causal inference, simulation output analysis, and cost-tiered model
+orchestration. Twelve numerical demonstrations --- one per use case, plus perturbation
+companions and a three-skill composition chain --- contrast naive and
+V\&V-informed analyses on simulated data with known ground truth; the gaps are large
+(nominal-$90\%$ intervals with $0$--$7\%$ realized coverage repaired to
+near nominal; a $47\%$ annual false-alarm rate reduced to $2\%$;
+$3\times$ overstated causal effects corrected), and perturbation checks
+show what breaks, and which alarms fire, when the assumptions behind the
+guarantees are violated. We also describe how
+the library was built --- a curation protocol that harvests the implicit
+curriculum of methodological schools in the stochastics literature under
+adversarial admission control --- and report its economics. All skills are
+reusable by any agent framework that can read markdown and run Python.
+\end{abstract}
+
+\section{Introduction}\label{sec:intro}
+
+LLM-assisted work fails statistically long before it fails syntactically.
+An agent that writes flawless code will still happily report an
+uncertainty-free point estimate, treat its own model-generated labels as
+ground truth, select a model on the same data it evaluates it on, stop an
+experiment the first time a dashboard looks significant, or average its way
+past a heavy tail. None of these failures raises an exception. Each
+produces a plausible number. And increasingly, those numbers feed decisions
+that matter: what to ship, whom to treat, where to provision, what to
+certify.
+
+Computational science confronted the same problem decades ago --- complex
+software producing plausible numbers for consequential decisions --- and
+developed a discipline for it: \emph{verification and validation} (V\&V)
+\citep{roache1998,oberkampf2010}. Verification asks whether the equations
+are solved right (code verification against exact solutions; solution
+verification by a-posteriori error estimation); validation asks whether the
+right equations are solved for the intended use. The discipline's central
+insight is procedural: correctness claims about computed quantities are not
+established by inspection or authority but by \emph{falsifiable checks
+attached to the artifact itself}.
+
+This paper transplants that discipline to LLM-derived outcomes and reports
+a working implementation. The transplant is direct
+(Section~\ref{sec:framework}):
+
+\begin{itemize}[leftmargin=1.6em]
+\item \textbf{Verification of tooling.} Every statistical procedure the
+agent carries ships with a \emph{verification anchor}: an exactly known
+ground truth (closed form, exact finite-sample distribution, analytically
+tractable special case) that the shipped code must reproduce --- the
+analogue of the method of exact or manufactured solutions. The anchor
+certifies the \emph{reference implementation}; Section~\ref{sec:framework}
+is explicit about what it does not certify.
+\item \textbf{Operating-characteristic verification.} Every procedure
+demonstrates its operating characteristics --- coverage, false-discovery
+rate, false-alarm rate, cost per verified artifact --- on synthetic data
+with known ground truth, with the naive analysis run alongside as control
+and with perturbation checks that violate the procedure's assumptions.
+This is deliberately \emph{not} called validation: validation proper ---
+comparison against audited data from the intended workload --- is
+prescribed by the framework as a continuing gold-set audit and is not
+claimed by this paper.
+\item \textbf{Runtime V\&V of outputs.} Every number delivered to a
+decision carries either a \emph{guarantee} (a stated bound, of a stated
+kind, feeding a named loss) or an \emph{alarm} (a diagnostic that halts
+the pipeline and escalates to a human). Silent invalidity is the failure
+mode being engineered away.
+\end{itemize}
+
+The implementation vehicle is the \emph{agent skill}
+\citep{anthropic2025skills}: a modular, versioned package of procedural
+knowledge --- a markdown playbook plus dependency-free executable scripts
+--- that an agent loads on demand. Skills are the right carrier for V\&V
+because they are inspectable, diffable, and testable: a skill is a claim
+that a procedure is correct, and the anchor bundled with it is the means of
+falsifying that claim. The library presented here comprises eleven skills
+spanning the statistical needs of LLM-assisted decision pipelines, from
+calibrated acceptance gates for LLM verifiers to risk-measure estimation
+(Section~\ref{sec:toolkit}), each grounded in an identifiable literature
+and each verified against an exact anchor
+(Section~\ref{sec:verify}).
+
+Two further contributions support the main one. First, twelve numerical
+demonstrations --- one per use case plus perturbation companions and a
+three-skill composition chain, standard-library Python, fixed seeds,
+simulated ground truth --- measure the gap between naive and V\&V-informed
+analysis and show, under perturbation, which alarms fire when assumptions
+break (Section~\ref{sec:toolkit}, Tables~\ref{tab:numbers}
+and~\ref{tab:perturb}); the gaps are not subtle. Second, we describe how the library was built: a curation
+protocol, \emph{curriculum harvesting}, that grows the library from
+methodological schools in the stochastics and uncertainty-quantification
+(UQ) literature under adversarial admission control
+(Section~\ref{sec:harvest}), together with the cost-tiered orchestration
+that makes the construction itself economical
+(Section~\ref{sec:orchestration}). The protocol is secondary to the V\&V
+thesis but is, we believe, the natural supply chain for it: the stochastics
+literature is unusual in how often it provides exactly the checkable
+special cases that anchors require.
+
+\paragraph{Scope and provenance.} The concrete host system is Anthropic's
+Claude agent stack (Claude Code and its skill format), with a
+multi-provider model panel accessed through the OpenRouter API for cheap
+bulk work; nothing in the framework is specific to that stack.
+Quantitative claims about the library's construction are drawn from the
+project's append-only run logs; the numerical demonstrations are fully
+reproducible from the supplementary scripts. Both should be read as a
+\emph{case report with runnable evidence}, not as a controlled evaluation.
+
+\section{Background}\label{sec:background}
+
+\subsection{V\&V in computational science}
+
+The V\&V tradition \citep{roache1998,oberkampf2010,sargent2013}
+distinguishes: \emph{code verification} --- demonstrating that the
+implementation solves its governing equations correctly, canonically by
+manufacturing or selecting problems with exact solutions and measuring
+convergence to them; \emph{solution verification} --- estimating the
+numerical error of a particular computed answer, typically a posteriori;
+and \emph{validation} --- demonstrating, by comparison against data from
+the intended domain of use, that the model is adequate for the decision it
+informs. The tradition is uncompromising on one point: these are distinct
+activities, and evidence for one is not evidence for another. A code can be
+verified and the model invalid; a model can be well-validated in one regime
+and worthless in the next.
+
+LLM-assisted analysis needs exactly this decomposition, for exactly the
+original reason: the artifact is too complex for correctness-by-inspection,
+and its consumers are too far downstream to catch errors informally. What
+changes in the transplant is the object: not a PDE solver but a
+\emph{pipeline of statistical procedures}, some executed by code the agent
+writes, some by judgments the agent (or a second model) makes.
+
+One element of the transplant must be stated with care, because the
+classical vocabulary is strict. In classical V\&V, \emph{validation}
+requires comparison against data from the intended operating environment;
+checks against a synthetic truth the analyst constructed --- however
+adversarial --- are forms of \emph{verification}. This paper's second
+layer is therefore named operating-characteristic \emph{verification},
+not validation; what this paper's evidence establishes is that the tooling
+is correct and that the procedures deliver their advertised error rates on
+ground-truth-known problems, including under assumption violations. The
+framework \emph{prescribes} validation --- continuing gold-set audits on
+the live workload, in the spirit of \citet{sargent2013} --- and
+Section~\ref{sec:limitations} is explicit that no such audit is reported
+here. The transplant claims the discipline's structure, not credit for
+its final stage.
+
+\subsection{Agent skills as procedural memory}
+
+A skill in the sense used here is a directory with a short frontmatter
+description (always in the agent's context) and a body loaded only on
+trigger, optionally with reference notes and scripts
+\citep{anthropic2025skills}. Functionally, skills are \emph{procedural
+memory}: they change what the agent does, not what it knows, which
+distinguishes them from retrieval-augmented generation (facts at answer
+time) \citep{lewis2020} and from fine-tuning (neither inspectable nor
+versionable by the end user). For V\&V purposes their decisive property is
+that they are artifacts: a skill can be code-reviewed, version-bumped,
+diffed --- and shipped with its own falsification test.
+
+\subsection{Why statistical failure is the binding failure mode}
+
+For a deployment playbook, the cost of a subtly wrong skill is a failed
+build: loud, fast, cheap. For a statistical procedure the failure mode is
+inverted: wrong procedures produce plausible numbers silently, and the loss
+is realized far downstream. This asymmetry is why the library's admission
+standard is stricter for statistical skills than any marketplace's, and why
+the runtime layer insists on guarantee-or-alarm: an agent operating
+autonomously has no statistician looking over its shoulder, so the
+statistician's scruples must be installed as procedure.
+
+The library is organized under a base meta-skill
+(\skillname{statistical-grounding}, shipped with the library as its
+twelfth package) encoding an eight-rule uncertainty-and-decision contract --- every estimate carries uncertainty;
+every decision names its loss; every selection procedure accounts for the
+selection; and so on. The individual skills of
+Section~\ref{sec:toolkit} are the machinery that makes specific rules
+executable.
+
+\section{The V\&V framework for LLM-derived outcomes}\label{sec:framework}
+
+\subsection{Layer 1: verification of tooling (anchors)}
+
+Every skill that ships numeric code must reproduce a ground truth exactly
+known by other means, \emph{on the same code path a user will exercise}.
+This is code verification in the classical sense, and the anchors play the
+role of exact solutions: the expected information gain of a linear-Gaussian
+design has a closed form; the Knothe--Rosenblatt transport map of a
+Gaussian is its Cholesky factor; split-conformal coverage at calibration
+size $n$ is exactly $\lceil (n{+}1)(1{-}\alpha)\rceil/(n{+}1)$ under
+exchangeability. Section~\ref{sec:verify} details the anchors and reports a
+bug caught by one: approximate checks pass code that exact checks kill.
+
+\subsection{Layer 2: operating-characteristic verification (and where
+validation proper begins)}
+
+An anchor certifies the code; it does not certify that the procedure
+delivers its advertised error rates on workload-like data, under
+workload-like misuse. Layer 2 requires each procedure to demonstrate its
+operating characteristics --- realized coverage of nominal intervals,
+realized FDR against the budget, realized false-alarm rate under
+continuous monitoring, realized cost per correct artifact --- on simulated
+data with known ground truth, with the \emph{naive} analysis run alongside
+as the control, and with \emph{perturbation checks} that deliberately
+violate the procedure's assumptions to show what breaks and which alarm
+fires. The demonstrations of Section~\ref{sec:toolkit} are this layer,
+executed. Validation proper begins where synthetic truth ends: on live
+workloads the framework prescribes continuing gold-set audits ---
+periodically label a random sample and compare the pipeline's claims
+against it --- and until such an audit exists for a given workload, the
+framework treats the pipeline's guarantees as conditional on assumptions
+no one has checked against reality.
+
+\paragraph{What counts as a guarantee.} Not all guarantees are equal, and
+conflating them is itself a silent failure. The library distinguishes:
+\emph{exact finite-sample, distribution-free} (split conformal under
+exchangeability; e-processes and confidence sequences under the martingale
+assumption; the Clopper--Pearson bound of the verifier gate);
+\emph{finite-sample, model-based} (linear-Gaussian design posteriors);
+\emph{asymptotic or semiparametric} (DML/AIPW intervals, batch-means
+$t$-intervals); and \emph{diagnostic-only} (importance-sampling efficiency
+gates, transport-map adequacy, cascade disagreement), which never ship as
+guarantees at all --- they only fire alarms. Every skill's playbook states
+which kind it delivers, and a deliverable's guarantee class travels with
+it to the decision.
+
+\subsection{Layer 3: runtime V\&V of outputs (guarantee or alarm)}
+
+The delivery rule: a number reaching a decision-maker carries a stated
+guarantee --- of a stated kind, under stated assumptions, \emph{feeding a
+named loss} --- or it does not ship; instead an alarm fires, stating which
+assumption failed or which diagnostic tripped, and the case escalates to a
+human. The loss clause matters: a defect-rate bound or a coverage
+statement is an input to a decision, not a decision, and the library's
+base contract (``every decision names its loss'') requires the guarantee
+to arrive attached to the cost model it feeds --- defect cost versus
+abstention cost at a gate, false-alarm budget versus detection delay on a
+monitor, experiment cost versus information at a design. Solution
+verification has a direct analogue here: error indicators drive
+\emph{escalation}, as in the cost-tiered orchestration of
+Section~\ref{sec:orchestration}, where disagreement between cheap and
+mid-tier models is itself the a-posteriori error signal that routes work
+to a stronger model.
+
+\subsection{Scope: what the framework does not verify}
+\label{sec:scope}
+
+Two failure surfaces are explicitly outside what the anchors certify, and
+naming them is part of the framework's honesty. First,
+\emph{agent-execution fidelity}: the anchor verifies the reference script,
+but the agent decides when to invoke it, constructs its arguments, and
+interprets its output --- and an agent can select the right script for the
+wrong problem, pass malformed inputs, or misstate a valid result in prose.
+The library's mitigations are structural (skills forbid re-implementation;
+guarantees are computed inside the verified script, so the glue can
+suppress a deliverable but not forge one; script boundaries carry input
+validation; alarms are emitted as machine-readable artifacts --- exit
+codes and structured records --- so a harness, not the agent's prose, is
+their intended consumer) but partial: an agent relaying results in prose
+can still misstate or omit an alarm to a human reader, so deployments
+should route alarm artifacts around the agent, and verification of the
+agent's invocation behavior remains an open problem. The paper's claims
+should be read as covering the statistical tooling of LLM-assisted
+decisions, not the agent's reasoning.
+Second, \emph{composition}: statistical validity does not compose ---
+upstream imputation, selection, or labeling can invalidate the
+exchangeability or ignorability a downstream skill needs. The library's
+current discipline is a worked chained demonstration
+(Section~\ref{sec:toolkit}, ex10) in which a monitoring link detects
+upstream drift, plus per-skill precondition statements; contract-level
+composition semantics are named as the frontier, not claimed.
+
+The three layers are ordered by scope --- the first certifies the tools,
+the second the procedures, the third each delivered number --- and they
+fail independently, which is why all three are needed. The next section
+shows the framework at work.
+
+\section{The toolkit in action}\label{sec:toolkit}
+
+A skill earns its place where statistical malpractice is silent: the code
+runs, the number is plausible, and the loss lands downstream. The common
+thread of the vignettes below is the conversion of a silent invalidity into
+a guarantee or an alarm. Table~\ref{tab:usecases} maps the toolkit;
+Table~\ref{tab:skills} lists each skill's literature grounding. Some uses
+are deployed inside the library's own construction pipeline (and marked
+so); the rest are prospective and stated as such.
+
+Every vignette is accompanied by a numerical demonstration: a companion
+script (Python standard library only, fixed seed, seconds of runtime on a
+laptop) that simulates a dataset with \emph{known ground truth} and runs
+the naive and the V\&V-informed analysis side by side. This is Layer~2 of
+the framework, executed. Table~\ref{tab:numbers} collects the headline
+numbers; each vignette quotes its own; the scripts accompany the paper as
+supplementary material (\texttt{examples/}, ex1--ex10, including the
+gate's shipped drift monitor ex1b and the nested-risk companion ex5b).
+
+What the demonstrations do and do not establish must be said before the
+table, not after it. Each data-generating process was \emph{chosen} so
+that ground truth is exact and the contrast is legible; each ``naive''
+column is a documented default of current LLM pipelines, but it is also a
+textbook anti-pattern meeting its canonical correction on the correction's
+home turf. The demonstrations are therefore \emph{reproducible
+counterexamples} --- mechanism proofs that these failure modes are generic
+and mechanized, and regression tests for the library --- not effect-size
+estimates for any real workload, and not an evaluation of the framework
+against a no-framework baseline. What separates the columns is correct
+versus incorrect statistical practice; the framework's own contribution is
+making the correct column \emph{agent-discoverable and runtime-audited}
+--- the methods packaged so an agent finds them at the moment of need,
+with guarantees computed inside verified code and known boundaries
+alarmed --- and the perturbation checks of Table~\ref{tab:perturb}, which
+violate each demonstration's key assumption and report what breaks and
+which alarm fires, are the part of the evidence that speaks to the
+framework rather than to the methods it carries.
+
+\begin{table}[t]
+\centering\small
+\caption{Use-case map: the silent failure each skill replaces, and what the
+practitioner gets instead.}
+\label{tab:usecases}
+\begin{tabular}{@{}L{3.3cm}L{5.2cm}L{5.2cm}@{}}
+\toprule
+Skill & Silent failure of naive practice & What the skill delivers \\
+\midrule
+\skillname{conformal-uq} & LLM judge accepts artifacts at an unknown,
+drifting error rate & Finite-sample bound on the accepted-defect rate;
+calibrated abstention \\
+\skillname{anytime-valid} & Continuously watched dashboards guarantee a
+false alarm under peeking & Inference valid at any stopping time; alarm
+budget for streams of hypotheses \\
+\skillname{prediction-powered-inference} & Model-generated labels treated
+as ground truth; bias of unknown sign & Valid intervals at near-model-scale
+precision from a small gold set \\
+\skillname{bayesian-optimal-design} & Experiment budget spent on
+low-information measurements & Designs ranked by expected information gain
+per unit cost \\
+\skillname{rare-event-is},
+\skillname{risk-measure-estimation} & Tail probabilities and CVaR from
+sample sizes that have never seen the tail & Feasible certification of
+small probabilities; risk functionals with honest error \\
+\skillname{selective-inference} & Confidence intervals reported on
+data-selected winners & Selection-adjusted intervals; FDR-controlled
+shortlists \\
+\skillname{causal-ml} & Correlational uplift read as causal; one average
+effect for everyone & Confounding-robust, heterogeneous effects; policies
+with valid inference \\
+\skillname{simulation-output-analysis},
+\skillname{measure-transport-inference} & Simulator output averaged
+without regard to autocorrelation or transient & Decision-grade error bars
+on simulation summaries; fast recalibration \\
+\skillname{model-hierarchy} & Frontier-model spend on work a cheap model
+verifiably does & Cost per \emph{verified} artifact as the managed
+quantity \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]
+\centering\small
+\caption{The skill library with the primary literature each skill rests
+on.}
+\label{tab:skills}
+\begin{tabular}{@{}L{4.3cm}L{9.9cm}@{}}
+\toprule
+Skill & Owns / anchored in \\
+\midrule
+\skillname{model-hierarchy} & Cost-tiered orchestration of LLM workloads as
+an MLMC-style telescoping system \citep{giles2008,giles2015,hajiali2016} \\
+\skillname{bayesian-optimal-design} & Expected-information-gain estimator
+ladder for design of experiments \citep{long2013,beck2018,ryan2016};
+sequential OED as a belief MDP \\
+\skillname{rare-event-is} & Importance sampling and splitting for small
+probabilities; efficiency diagnostics \citep{bucklew2004,rubino2009} \\
+\skillname{measure-transport-inference} & Triangular (Knothe--Rosenblatt)
+transport maps for Bayesian inference
+\citep{elmoselhy2012,marzouk2016,spantini2018} \\
+\skillname{conformal-uq} & Split-conformal prediction and calibrated verifier
+gates \citep{vovk2005,lei2018,angelopoulos2023gentle} \\
+\skillname{selective-inference} & Multiplicity, knockoffs, and
+post-selection validity \citep{bh1995,barber2015,candes2018} \\
+\skillname{anytime-valid} & Confidence sequences, e-values, online FDR
+\citep{howard2021,ramdas2023,waudbysmith2024} \\
+\skillname{prediction-powered-inference} & Valid inference from
+ML-predicted labels plus a small gold set \citep{angelopoulos2023ppi} \\
+\skillname{causal-ml} & Heterogeneous effects, DML, policy learning
+\citep{wager2018,chernozhukov2018,athey2021} \\
+\skillname{simulation-output-analysis} & Steady-state output CIs;
+Rhee--Glynn unbiased multilevel randomization
+\citep{asmussen2007,rhee2015} \\
+\skillname{risk-measure-estimation} & VaR/CVaR and nested-simulation
+estimation; elicitability \citep{rockafellar2000,gneiting2011,giles2019} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]
+\centering\small
+\caption{Numerical demonstrations (simulated ground truth, seed 2026;
+companion scripts in the supplement). Coverage figures are for nominal
+$90\%$ intervals.}
+\label{tab:numbers}
+\begin{tabular}{@{}L{3.4cm}L{5.1cm}L{5.1cm}@{}}
+\toprule
+Demonstration & Naive analysis & V\&V-informed analysis \\
+\midrule
+Verifier gate (ex1) & $8.0\%$ defects among accepted; over the $5\%$
+target in $100\%$ of runs & $2.8\%$ defects; over target in $8.3\%$ of runs
+(guarantee: $\le 10\%$) \\
+Dashboard, null (ex2) & $47.4\%$ chance of $\ge 1$ false alarm per year of
+daily peeking at $\alpha=.05$ & $2.2\%$ ($\le 5\%$ guaranteed at any
+stopping time) \\
+Dashboard, effect (ex2) & fixed-horizon design waits day 365 & confidence
+sequence stops at median day 117 \\
+Model labels (ex3) & model-only: coverage $0\%$; gold-only: CI width 6.2 pts
+& PPI: width 2.9 pts, coverage $89.7\%$ ($4.5\times$ the gold sample) \\
+Experiment design (ex4) & random placement: median 37 experiments to target
+posterior precision; repeated-center: never & greedy-EIG: 22 experiments \\
+Rare event, $p\!\approx\!10^{-6}$ (ex5) & $9.8\times 10^{7}$ samples for
+$10\%$ relative error & $5.4\times 10^{2}$ samples (variance reduction
+$1.8\times 10^{5}$) \\
+Nested risk (ex5b) & inner $M{=}1$: estimates $0.231$ for a true $0.050$ &
+budget-aware $M{=}100$: $0.053$, $10\times$ lower RMSE at equal cost \\
+Selected winners (ex6) & naive CIs on selected nulls: coverage $0\%$ &
+conditional (truncated-normal) CIs: $90.4\%$; BH shortlist at certified
+FDR $\le 10\%$ \\
+Causal effect (ex7) & difference in means: $6.23$ for a true ATE of $2.00$
+& cross-fitted DML/AIPW: $2.00 \pm 0.04$; targeted policy worth $2\times$
+treat-all \\
+Queue summary (ex8) & iid-style CI: coverage $5.0\%$ (width $0.16$ around a
+truth of $9$) & batch means: coverage $83.3\%$ (width $2.7$) \\
+Cascade economics (ex9) & all-frontier: $25.8$ per correct artifact,
+$3.0\%$ defects & cascade: $7.6$ per correct artifact, $1.5\%$ defects \\
+Composition chain (ex10) & model-only prevalence error grows $5\times$
+after silent labeler drift & PPI coverage $89.1\%$ through the drift;
+monitor alarms at median day 41 (onset 31) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]
+\centering\small
+\caption{Perturbation checks: each demonstration's key assumption is
+deliberately violated; the table reports what breaks and which alarm the
+library fires. ``Shipped'' alarms are runnable diagnostics; the causal
+row's alarm is procedural (a playbook-forced escalation, not a runtime
+statistic). False-alarm and detection rates are Monte Carlo estimates over
+200--300 replications.}
+\label{tab:perturb}
+\begin{tabular}{@{}L{3.2cm}L{3.6cm}L{3.4cm}L{3.2cm}@{}}
+\toprule
+Demonstration & Perturbation & Consequence & Alarm \\
+\midrule
+Verifier gate (ex1, ex1b) & post-calibration drift: new defect type scores
+higher & defects among accepted $2.8\%\to12.0\%$; target breached in
+$86\%$ of runs & shipped (ex1b): audit-stream monitor fires at median
+day 31 (onset 21), false-alarm rate $5.7\%$ vs.\ $5\%$ target \\
+Nested risk (ex5b) & inner-sample budget misallocated ($M{=}1$) &
+$4.6\times$ overstatement of the risk probability at identical total
+cost & shipped: budget-aware inner/outer allocation rule (bias
+$\propto 1/M$ made explicit) \\
+Causal effect (ex7) & confounder hidden from the analyst & DML/AIPW
+biased: $4.54$ for a true $2.00$ --- identification, not machinery,
+fails & procedural: playbook-forced identification statement; sensitivity
+analysis or escalation \\
+Queue summary (ex8) & batch length short vs.\ relaxation time & batch
+means undercover ($83.3\%$ vs.\ $90\%$ nominal) & shipped: batch-length
+vs.\ autocorrelation-time check \\
+Composition (ex10) & upstream labeler silently degrades
+(specificity $0.97\to0.85$) & model-only estimate error grows $5\times$,
+silently & shipped: anytime-valid monitor on the rectifier stream fires
+at median day 41, false-alarm rate $5.5\%$ vs.\ $5\%$ target \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Calibrated gates for LLM verifiers (deployed).} Any pipeline
+that generates artifacts in bulk --- code patches, extracted records,
+auto-generated assessment items --- ends in the same bottleneck: an LLM
+judge accepts or rejects, and the judge's error rate is unknown and drifts
+across domains. The \skillname{conformal-uq} gate calibrates the acceptance
+threshold on a modest labeled sample and returns a finite-sample guarantee
+of the form ``at most $5\%$ of auto-accepted artifacts are defective, with
+$90\%$ confidence,'' with abstentions routed to a human
+\citep{vovk2005,angelopoulos2023gentle}. The difference is not accuracy but
+\emph{auditability}: the gate's claim survives a hostile review that ``the
+judge seemed fine'' does not. This is runtime V\&V (Layer~3) for the most
+common trust decision in agent systems --- trusting a second model's
+judgment. \emph{Demonstration (ex1):} against a $5\%$ defect target, the
+naive ``judge says pass'' gate ships $8.0\%$ defects and breaches the
+target in every calibration draw; the calibrated gate ships $2.8\%$ and
+breaches in $8.3\%$ of draws --- within its stated $10\%$ risk --- at the
+price of accepting $51\%$ rather than $76\%$ of artifacts. The price is
+visible, priced, and chosen. \emph{Guarantee class, alarm, loss:} exact
+finite-sample (Clopper--Pearson risk-controlling threshold), valid under
+exchangeability of calibration and deployment artifacts with a fixed
+scoring rule. Because Table~\ref{tab:perturb} shows exactly that
+assumption voiding the guarantee under drift ($12\%$ defects shipped,
+silently), the gate does not deploy alone: its companion monitor (ex1b)
+feeds a small daily gold audit of \emph{accepted} artifacts into an
+anytime-valid boundary and converts post-calibration drift into an alarm
+at a budgeted false-alarm rate ($5.7\%$ realized against a $5\%$ target,
+median ten days to detection). The bound feeds a defect-cost versus
+abstention-cost model: with defect cost $C$, auto-acceptance is worth it
+precisely when $0.05\,C$ beats the per-artifact cost of human review.
+
+\paragraph{The always-on dashboard.} Modern metric cultures monitor
+continuously and act on the first significant-looking excursion; under
+peeking, a fixed-horizon test's false-alarm guarantee is void, and with
+enough looks a spurious alarm is certain. The \skillname{anytime-valid}
+skill replaces the test with a confidence sequence or e-process
+\citep{howard2021,ramdas2023}: valid at every time simultaneously, so the
+team may stop, continue, or extend for any reason without invalidating the
+inference, with online FDR control across the stream of hypotheses a
+dashboard culture generates. \emph{Demonstration (ex2):} under the null, a
+year of daily peeking at $\alpha=0.05$ produces at least one false alarm
+$47.4\%$ of the time; a Robbins normal-mixture confidence sequence,
+$2.2\%$. Under a real drift of $0.25\sigma$ per day (a deliberately large daily
+standardized effect, chosen for a legible stopping-time distribution) the
+same sequence detects in $97\%$ of runs at a median of day 117 --- eight
+months earlier than the fixed-horizon design it replaces. \emph{Guarantee
+class, alarm, loss:} exact time-uniform under the martingale assumption;
+the crossing itself is the alarm; the loss trade is the false-alarm budget
+against detection delay, set by $\alpha$ and the mixture parameter.
+
+\paragraph{Measurement with model-generated labels.} An analyst wants the
+prevalence of some property in fifty thousand documents --- churn-risk
+support tickets, a defect category in generated content, a competency
+signal in HR text --- and an LLM can label all of them for cents. Treating
+those labels as truth imports a bias of unknown sign and size; using only
+the few hundred human labels wastes the model.
+\skillname{prediction-powered-inference} \citep{angelopoulos2023ppi}
+returns a confidence interval centered by the cheap predictions and
+\emph{corrected} by the gold set: near-model-scale precision, human-scale
+validity. For LLM-heavy organizations this is arguably the single
+highest-leverage skill, because it legalizes a workflow everyone is
+already doing invalidly. \emph{Demonstration (ex3):} with true prevalence
+$12\%$ and a sensitivity-$0.95$/specificity-$0.98$ labeler, the model-only
+estimate concentrates tightly on $13.2\%$ --- its $90\%$ interval covers
+the truth in $0\%$ of repetitions --- while the 300-label gold-only
+interval is honest but 6.2 points wide. PPI delivers a 2.9-point interval
+with $89.7\%$ coverage: the 300 human labels do the work of $\sim$1{,}350.
+\emph{Guarantee class, alarm, loss:} asymptotic, requiring the gold sample
+to be a random draw from the measured population; the rectifier's mean is
+itself the drift sensor (ex10 monitors exactly this stream); the interval
+feeds the loss behind the prevalence decision --- overstaffing cost
+against missed-case cost at a triage or escalation threshold.
+
+\paragraph{Designing the expensive experiment.} When measurements cost real
+money --- sensor placement on an infrastructure network, the next assay in
+a lab campaign, the next item administered in an adaptive test ---
+\skillname{bayesian-optimal-design} ranks candidate designs by expected
+information gain per unit cost, choosing the estimator from its ladder
+according to the problem's structure \citep{long2013,beck2018,ryan2016},
+with sequential campaigns handled as belief-state planning. The delivered
+difference is fewer experiments to a target posterior precision; the
+delivered \emph{discipline} is that the agent must state what the
+experiment is for before spending on it. \emph{Demonstration (ex4):}
+calibrating a three-parameter response curve to a target posterior
+precision takes the greedy max-EIG design 22 measurements against a median
+of 37 for random placement --- a $40\%$ saving --- while the intuitive
+``measure the center repeatedly'' design \emph{never} gets there: its
+information matrix is singular in the slope and curvature directions, a
+failure EIG accounting makes visible before the budget is spent.
+
+\paragraph{Certifying against rare failures.} A reliability engineer must
+certify that a failure probability --- a grid contingency, a network
+outage, a safety-case event --- is below $10^{-6}$; naive Monte Carlo needs
+on the order of $10^{8}$ simulations to even see the event. The
+\skillname{rare-event-is} machinery (control-based importance sampling,
+splitting for dynamic systems) reduces the required simulation budget by
+orders of magnitude, while its efficiency diagnostics alarm when the
+proposal itself is unreliable \citep{bucklew2004,rubino2009}. Downstream of
+the tail probability sits the decision-relevant quantity, and
+\skillname{risk-measure-estimation} owns it: VaR/CVaR and expected
+shortfall estimated by nested and multilevel schemes
+\citep{rockafellar2000,giles2019}, with elicitability theory
+\citep{gneiting2011} supplying the backtests. Together they are the loss
+side of the base contract: not ``how likely is failure,'' but ``what should
+we provision for it.'' \emph{Demonstrations (ex5, ex5b):} for a Gaussian
+tail probability of $1.02\times 10^{-6}$, naive Monte Carlo with a million
+samples sees a single hit ($99\%$ relative standard error); a tilted
+importance sampler at the same budget achieves $0.23\%$ --- a variance
+reduction of $1.8\times 10^{5}$, or $9.8\times 10^{7}$ versus $540$ samples
+for $10\%$ relative error. On the nested side, estimating a $5\%$
+probability of large conditional loss with a single inner sample returns
+$0.231$ --- a $4.6\times$ overstatement invisible to the user --- while a
+budget-aware inner/outer allocation at \emph{identical total cost} returns
+$0.053$ with $10\times$ lower RMSE.
+
+\paragraph{Reporting the winners.} An agent screens two thousand features,
+five hundred generated strategies, or a hundred subgroups, and reports the
+top ten with confidence intervals --- the winner's curse, mechanized at
+agent speed. \skillname{selective-inference} makes the shortlist honest:
+FDR control over the screen \citep{bh1995,barber2015,candes2018} and
+selection-adjusted intervals on what survives. The organizational symptom
+this cures is familiar to every analytics team: effects that shrink or
+vanish on replication. \emph{Demonstration (ex6):} screening 2{,}000 null
+effects at $|z|>2.58$ and reporting naive $90\%$ intervals on the survivors
+yields \emph{zero} coverage --- any screen stricter than the interval
+half-width guarantees a miss, which is the winner's curse in its purest
+mechanical form --- while conditional truncated-normal intervals restore
+$90.4\%$. On a mixed panel, a Benjamini--Hochberg shortlist certifies its
+false discovery rate ($9.2\%$ realized against a $10\%$ budget) and finds
+\emph{more} true signals than the uncertified naive top-$k$ it replaces.
+\emph{Guarantee class, alarm, loss:} exact conditional coverage and
+finite-sample FDR control; the loss trade is follow-up cost per false
+discovery against the value of a missed true signal, which sets the FDR
+budget and the shortlist size.
+
+\paragraph{Targeting instead of averaging.} Retention offers, training
+interventions, and pricing changes all pose the same question: not ``does
+it work on average'' but ``for whom.'' \skillname{causal-ml} carries the
+modern answer --- double/debiased ML for confounding-robust effects
+\citep{chernozhukov2018}, causal forests for heterogeneity
+\citep{wager2018}, and policy learning with valid inference
+\citep{athey2021} --- so that treatment is assigned where the effect is,
+under stated assumptions the playbook forces the agent to check rather than
+assume. \emph{Demonstration (ex7):} with treatment assignment confounded by
+a single observed covariate, the difference in means reads $6.23$ for a
+true effect of $2.00$ --- a $3\times$ overstatement that would survive any
+code review --- while cross-fitted AIPW returns $2.00\pm0.04$. In the
+targeting variant, treating only the subgroup whose estimated effect
+exceeds cost doubles the realized policy value over treat-everyone
+($+1.00$ versus $+0.50$ per unit). \emph{Guarantee class, alarm, loss:}
+asymptotic/semiparametric, and conditional on identification --- the
+playbook forces a written statement of the assignment mechanism, observed
+confounders, and overlap diagnostics, and Table~\ref{tab:perturb} shows
+why: with a hidden confounder the same machinery returns $4.54$ for a true
+$2.00$, so when unmeasured confounding is plausible the skill's output is
+a sensitivity analysis or an escalation, not an estimate. The loss hookup
+is explicit: treatment cost against estimated subgroup effect.
+
+\paragraph{Trusting a simulation's summary.} A discrete-event or
+digital-twin simulation drives a capacity decision. The model may be
+perfectly correct and the summary still invalid: autocorrelated output
+averaged as if independent, the initial transient left in, tails read from
+a single trajectory. \skillname{simulation-output-analysis} supplies the
+output-side discipline --- batch-means and regenerative confidence
+intervals, transient handling, and Rhee--Glynn randomization
+\citep{asmussen2007,rhee2015} for unbiased averaging across parallel
+replications --- while \skillname{measure-transport-inference} keeps the
+twin \emph{calibrated}, updating its posterior against field data without
+an MCMC campaign \citep{elmoselhy2012,marzouk2016}.
+\emph{Demonstration (ex8):} for an M/M/1 queue at $90\%$ utilization (true
+mean wait exactly 9), the iid-style $90\%$ interval from a
+40{,}000-customer run covers the truth $5.0\%$ of the time --- and is
+seductively narrow ($0.16$ wide) --- while batch means covers $83.3\%$ at
+an honest width of $2.7$. The residual gap below nominal is itself
+informative: batch length relative to the queue's relaxation time is the
+diagnostic the skill checks before trusting the interval.
+\emph{Guarantee class, alarm, loss:} asymptotic ($t$-interval on batch
+means) with the batch-length diagnostic as the shipped alarm; the interval
+feeds overprovisioning cost against shortfall or SLA-violation cost in the
+capacity decision.
+
+\paragraph{Paying for intelligence correctly (deployed).} The economics of
+LLM systems are themselves a V\&V surface. \skillname{model-hierarchy}
+reframes the managed quantity from cost per call to cost per
+\emph{verified} artifact: bulk generation at the cheapest level that
+verification can police, escalation only on disagreement or failed checks
+--- an organizational analogue of multilevel Monte Carlo's telescoping
+principle \citep{giles2008,giles2015} with disagreement as the
+a-posteriori error indicator. The library's own construction
+(Section~\ref{sec:harvest}) is the existence proof; the pattern applies to
+any bulk LLM workload where checking is cheaper than producing.
+\emph{Demonstration (ex9):} with a cheap model at $88\%$ accuracy and unit
+cost, a frontier model at $97\%$ and $25\times$ cost, and a verifier with
+$92\%$ error recall at $2\times$ cost, the verify-and-escalate cascade
+dominates the all-frontier strategy on \emph{both} axes: $1.5\%$ residual
+defects (versus $3.0\%$) at $7.6$ per correct artifact (versus $25.8$).
+Once a plausible downstream cost per shipped defect is added, the
+all-cheap strategy --- nominally $25\times$ cheaper --- becomes more
+expensive than the cascade as well.
+
+\paragraph{Composition: a three-skill chain under drift.} Skills are used
+in pipelines, and validity does not compose automatically --- which is why
+the library's composition discipline is demonstrated rather than assumed.
+The chained demonstration (ex10) is the workload every LLM-heavy
+organization runs: a labeler processes two thousand documents a day, a
+40-document gold audit is drawn daily, and the pipeline must deliver a
+daily prevalence estimate \emph{and} notice when the labeler silently
+changes. Link one is \skillname{prediction-powered-inference}, whose daily
+interval is valid regardless of labeler quality because the rectifier is
+estimated on the same day's gold pairs. Link two is an
+\skillname{anytime-valid} monitor on the rectifier stream, calibrated on a
+ten-day burn-in, whose boundary runs in an intrinsic time that charges for
+the estimated baseline's uncertainty. At day 31 the labeler's specificity
+silently drops ($0.97\to0.85$). \emph{Measured:} the model-only estimate's
+error grows fivefold with no visible symptom; the PPI intervals hold
+$89.1\%$ coverage straight through the drift; and the monitor fires at a
+median of day 41 with a $5.5\%$ false-alarm rate against its $5\%$ target
+--- the upstream assumption violation converted into an explicit,
+budgeted alarm. This is the framework's composition claim in full: chains
+are safe exactly insofar as each link's preconditions are watched by
+another link, and contract-level composition semantics beyond this
+pattern are an open frontier (Section~\ref{sec:scope}).
+
+\section{Building the library: curriculum harvesting}\label{sec:harvest}
+
+The toolkit above was not assembled from skill marketplaces --- which are
+dominated by software-engineering workflows and rarely ship falsifiable
+claims --- but harvested from the literature. The unit of harvesting is the
+\emph{methodological school}: an author or small cluster whose students and
+collaborators propagate a coherent, transferable toolkit (multilevel Monte
+Carlo around Giles and Tempone; measure transport around Marzouk; conformal
+prediction and selective inference around Cand\`es; anytime-valid inference
+around Ramdas). A school, unlike a paper, comes with an implicit
+\emph{curriculum} --- the follow-up papers, the surveys, the software
+habits, the standard counterexamples a practitioner needs to apply the
+method without a supervisor --- and the harvesting protocol is built to
+extract exactly that. Five stages; one school (occasionally a deliberately
+paired pair of lineages) per session block.
+
+\subsection{Stage 1: the author roster}
+
+A live, git-tracked queue of candidate schools with explicit priorities.
+Admission requires four criteria: \textbf{school-forming} (students and
+collaborators propagate a coherent toolkit); \textbf{method-first}
+(techniques transfer beyond the home domain); \textbf{practitioner-reachable}
+(papers state algorithms, not only theorems); and \textbf{gate-plausible}
+(at least one cluster could plausibly be admitted against the current
+library --- checked before a row is added). Nominations come from the
+operator's field knowledge, from coauthor-graph exploration of
+already-harvested schools (resolving authors by OpenAlex identifiers from
+joint works, never by name search --- name collisions and merged author
+records are both incidents in the project log), and from cross-family
+elicitation runs in which several cheap models from different providers
+independently nominate schools against the same criteria and exclusion
+list, with same-family agreement discounted as correlated evidence.
+
+\subsection{Stage 2: scoped harvest into a citation-disciplined wiki}
+
+A run opens with a locked scope (the clusters to harvest, named in the
+roster row) and fans out parallel subagents over the school's literature.
+The output is a \emph{wiki}: per-cluster pages with per-claim citations,
+compiled under the rule that a claim without a source does not enter, and
+checked by an independent verifier pass that samples claims and attempts to
+falsify them against the cited sources. The wiki --- typically 20--35
+admitted sources per school --- persists as the audit trail for every
+downstream decision.
+
+\subsection{Stage 3: the novelty gate}
+
+Each method cluster receives a structured verdict against the existing
+library: \textsc{adopt} (new skill, with a recorded ownership boundary
+against every adjacent skill), \textsc{merge} (versioned delta to an
+existing skill), or \textsc{defer} (not built, but with recorded trigger
+conditions under which the verdict reopens --- deferral with triggers keeps
+rejection cheap to reverse). The gate is adversarial by design: its default
+answer is no, and overlap is scored before value. In the runs reported here
+it rejected, among others, a standalone probabilistic-graphical-models
+skill (thin wedge over existing Bayesian machinery) and a
+wireless-communications performance-analysis school (a domain school whose
+methodological content already reached the library through a method-first
+lineage).
+
+\subsection{Stage 4: build with standard-library scripts}
+
+Winning clusters become skills: a playbook stating when the method applies,
+the decision points, the standard failure modes, and the stopping rules,
+plus executable scripts kept dependency-light (Python standard library
+wherever feasible). The discipline is not aesthetic: skills travel across
+machines and sandboxes, and a script that fails at import time spends the
+agent's error budget before the statistics begin.
+
+\subsection{Stage 5: verification anchors}
+
+Before admission, each skill's scripts must reproduce a known ground truth
+(Layer~1 of the framework); Section~\ref{sec:verify} gives the anchors
+used. Admission control plus anchors is what separates harvesting from
+``ask the model to summarize the literature'': every claim is cited, every
+adoption is adjudicated, and every shipped procedure is falsifiable.
+
+\section{Schools harvested and skills derived}\label{sec:schools}
+
+Table~\ref{tab:schoolruns} summarizes the eight harvesting runs (July
+2026): eleven new skills and six versioned upgrades. Per-school detail ---
+run narratives, gate records, and the coauthor-graph exploration --- is
+companion-paper material; here we note only what bears on the V\&V
+program.
+
+\begin{table}[t]
+\centering\small
+\caption{Harvesting runs (July 2026). ``Yield'' lists new skills and
+version-bumped merges.}
+\label{tab:schoolruns}
+\begin{tabular}{@{}L{3.4cm}L{4.2cm}L{6.6cm}@{}}
+\toprule
+School & Clusters harvested & Yield \\
+\midrule
+R.~Tempone (KAUST/RWTH) & MIMC; optimal experimental design; control-variate
+importance sampling; adaptivity & \skillname{bayesian-optimal-design} (new);
+\skillname{rare-event-is} (new); \skillname{model-hierarchy} v1.2
+(multi-index); \skillname{numerical-vv} v1.1 (adaptivity checks) \\
+\addlinespace
+Y.~Marzouk (MIT) & Transport maps; likelihood-informed subspaces; sequential
+OED; transport filtering & \skillname{measure-transport-inference} (new);
+\skillname{bayesian-optimal-design} v1.1 (sequential OED);
+\skillname{bayesian-workflow} v1.1 (high-dim.); filtering \textsc{defer}red
+with triggers \\
+\addlinespace
+E.~Cand\`es (Stanford) & Conformal prediction; knockoffs; selective
+inference; LLM verifier gates & \skillname{conformal-uq} (new);
+\skillname{selective-inference} (new) \\
+\addlinespace
+M.~I.~Jordan (Berkeley) & Variational inference; PGMs; decision-focused ML &
+\skillname{prediction-powered-inference} (new); \skillname{bayesian-workflow}
+v1.2 (VI); PGMs rejected standalone \\
+\addlinespace
+Athey--Imbens--Wager + Chernozhukov (Stanford/MIT) & Causal forests; DML;
+policy learning; adaptive experiments & \skillname{causal-ml} (new);
+\skillname{study-design} v1.1 (adaptive-experiment checklist) \\
+\addlinespace
+A.~Ramdas (CMU) & Confidence sequences; e-processes; online FDR &
+\skillname{anytime-valid} (new); \skillname{selective-inference} v1.0.1
+(boundary) \\
+\addlinespace
+Glynn + Rubino (Stanford/INRIA) & Output analysis; unbiased multilevel
+randomization; splitting; heavy tails & \skillname{simulation-output-analysis}
+(new); \skillname{rare-event-is} v1.1 (splitting, heavy tails, efficiency
+gates) \\
+\addlinespace
+Haji-Ali + Krumscheid (Heriot-Watt/KIT; Giles bridge) & Nested MC for risk
+functionals; MLMC for distributions; robust UQ &
+\skillname{risk-measure-estimation} (new) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Three features of the runs bear directly on the framework's credibility.
+First, the gate rejected and merged as often as it adopted: variational
+inference entered as a version bump to an existing Bayesian-workflow
+skill; probabilistic graphical models were rejected standalone as a thin
+wedge; sequential experimental design, left open by one school's run, was
+closed by another school's belief-space formulation as a merge rather than
+a new skill --- admission control functioning as designed. Second, the
+Cand\`es-school run is where the library became self-policing: conformal
+prediction is itself a V\&V technology (distribution-free finite-sample
+coverage from exchangeability alone \citep{vovk2005,lei2018}), and the
+calibrated verifier gates it contributed now gate the library's own
+construction pipeline. Third, the roster is not closed under operator
+knowledge: the risk-measure school was surfaced by coauthor-graph
+exploration, filling a gap the base contract had made visible --- the
+library could estimate probabilities and expectations but did not own
+coherent-risk-measure estimation \citep{rockafellar2000,giles2019}, the
+loss side of ``every decision names its loss.''
+
+\section{Verification discipline in practice}\label{sec:verify}
+
+The anchor rule --- every skill that ships numeric code must reproduce a
+ground truth exactly known by other means, on the same code path a user
+will exercise --- is Layer~1 of the framework. Representative anchors:
+
+\begin{itemize}[leftmargin=1.6em]
+\item \textbf{Closed-form EIG} (\skillname{bayesian-optimal-design}): for
+linear-Gaussian models the expected information gain has a closed form; the
+Monte Carlo estimator ladder must converge to it, and the anchor doubles as
+a demonstration of the inner-loop bias that makes naive nested Monte Carlo
+drift with inner sample size \citep{ryan2016}.
+\item \textbf{Cholesky as transport map}
+(\skillname{measure-transport-inference}): for Gaussian targets the
+Knothe--Rosenblatt map is triangular and linear; the fitted map must
+recover the Cholesky factor.
+\item \textbf{Exact finite-sample conformal coverage}
+(\skillname{conformal-uq}): split conformal at level $\alpha$ with $n$
+calibration points has coverage exactly
+$\lceil (n{+}1)(1{-}\alpha)\rceil/(n{+}1)$ under exchangeability, with a
+Beta-distributed conditional coverage \citep{vovk2005}. This anchor is
+sharp enough to catch off-by-one errors in the quantile index --- and did:
+the first generated implementation passed a loose ``coverage
+$\approx 1-\alpha$'' check but failed the exact band, revealing precisely
+the \mbox{$\lceil\cdot\rceil$-vs-index} bug the anchor was designed to
+catch.
+\item \textbf{Winner's curse, quantified} (\skillname{selective-inference}):
+on selected null effects, naive 90\% confidence intervals achieved 20.6\%
+coverage in the skill's bundled demonstration, which selects by top-$k$
+rank; the paper's ex6 uses a threshold screen instead, under which naive
+coverage is exactly zero. The two figures are different selection rules,
+both shipped --- the skill carries the failure, not only the fix.
+\item \textbf{Variance-reduction accounting} (\skillname{rare-event-is}):
+the skill's bundled control-based importance-sampling demonstration
+documents a variance reduction of order $10^4$ on its test problem (the
+paper's ex5, a different and easier tail, reaches $1.8\times10^{5}$)
+alongside the structural fact the anchor verifies: an imperfect control
+changes \emph{variance}, never \emph{bias} --- the property that makes the
+method safe to hand to a non-expert.
+\end{itemize}
+
+Two lessons generalize. First, anchors should be \emph{exact}, not
+approximate: the conformal bug survived an approximate check and died on
+the exact one --- the direct analogue of the observation in classical V\&V
+that qualitative ``looks right'' comparisons pass codes that
+order-of-convergence tests kill \citep{roache1998}. Second, skills should
+ship their canonical \emph{failure} as a runnable demonstration alongside
+the fix; for statistical methods, the counterexample is half the pedagogy.
+
+\section{Orchestration and economics}\label{sec:orchestration}
+
+The construction pipeline runs on a hierarchy of models orchestrated by the
+\skillname{model-hierarchy} skill, in deliberate analogy with multilevel
+Monte Carlo \citep{giles2008,giles2015}: expensive evaluations are reserved
+for what only they can do, and the bulk of the sampling happens at the
+cheap levels. Tier-0 leaves (free or near-free models across several
+providers, plus local models) perform bulk generation --- literature
+harvesting, candidate nomination, replicate drafting --- with replication
+across model \emph{families} and same-family agreement discounted as
+correlated evidence; a mid tier verifies, dedupes, and aggregates; a root
+model locks scope, arbitrates the novelty gate, and owns the audit trail.
+A strict generator/verifier separation is enforced: no tier adjudicates its
+own output.
+
+Two governance layers make this safe to run unattended. A
+\emph{data-egress gate} classifies every payload before it leaves the
+machine (free-tier providers may log prompts; only public,
+published-literature content is dispatched to them). And an append-only run
+log with per-call cost accounting keeps the economics honest: an external
+multi-model review panel over the library's entire design cost \$0.61
+across three rounds --- the marginal cost of adversarial review at this
+scale is effectively zero, which changes how often one should convene it.
+
+The human operator's role concentrates at three points: nominating and
+signing off roster rows, resolving gate debates the adversarial review
+leaves open, and supplying the loss function --- deciding what the library
+is \emph{for}, which no amount of literature harvesting determines.
+Everything between those points is delegated, logged, and reversible.
+
+\paragraph{Self-application.} A paper advocating falsifiable checks owes a
+brief statement of which checks were applied to its own artifacts --- with
+the caveat that the manuscript is a human-authored argument, not a runtime
+artifact, and was not produced by the pipeline it describes. What was
+checked: the library's skill scripts passed their anchors before
+admission; the demonstration scripts are anchor-disciplined (fixed seeds,
+exact ground truths) and ship with the paper; and the manuscript underwent
+a documented three-round adversarial review by seven frontier models from
+seven providers (costs and verdicts archived in the project's run logs),
+whose surviving criticisms produced, among other revisions, the renaming
+of Layer~2, the scope section, the perturbation table, the gate's
+companion monitor, and the composition demonstration. The raw review
+materials remain in the private project archive and are not part of the
+public repository. What has not
+happened: independent replication by a second operator, and validation
+against a live workload --- both named as the natural next studies. Until
+then this remains what it claims to be: a case report whose load-bearing
+claims are third-party falsifiable from the public artifacts.
+
+\section{The mechanism census}\label{sec:census}
+
+The most useful strategic artifact to emerge from the program is a one-line
+characterization of each school by the structural resource its methods
+\emph{spend} to buy statistical efficiency or validity
+(Table~\ref{tab:census}). The census answers the question that otherwise
+dooms library growth to redundancy: a new school is worth harvesting only
+if it spends a resource the library does not yet spend. It functions both
+as a diversification rule for the roster and as a stopping rule: when
+nominations keep landing on spent mechanisms, the literature's marginal
+value to the library has collapsed.
+
+\begin{table}[t]
+\centering\small
+\caption{Mechanism census: the resource each harvested school spends.}
+\label{tab:census}
+\begin{tabular}{@{}L{4.6cm}L{9.6cm}@{}}
+\toprule
+School & Resource spent \\
+\midrule
+Tempone (MLMC/MIMC, OED) & \emph{Error indicators}: budget allocated along
+estimated error contributions across levels and indices \\
+Marzouk (transport) & \emph{Geometry}: low-dimensional and triangular
+structure of the posterior \\
+Cand\`es (conformal, knockoffs) & \emph{Exchangeability}: symmetry of the
+data under permutation, spent for finite-sample validity \\
+Ramdas (anytime-valid) & \emph{Martingale structure}: nonnegative
+supermartingales spent for validity under optional stopping \\
+Jordan (PPI, VI) & \emph{Cheap predictions}: abundant ML output debiased
+against a small gold-standard set \\
+Athey--Wager--Chernozhukov & \emph{Orthogonality and design}: Neyman
+orthogonality and randomization spent for robustness to nuisance error \\
+Glynn--Rubino & \emph{Probabilistic structure of the simulator}:
+regeneration, stationarity, and coupling spent for valid output analysis \\
+Haji-Ali--Krumscheid & \emph{Smoothness of the functional}: regularity of
+risk functionals spent inside nested and multilevel estimators \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Limitations}\label{sec:limitations}
+
+This is a single-operator case report, and several limitations are
+structural. (i)~\emph{No controlled evaluation}: we report that anchors
+caught bugs and gates prevented duplication, but not a counterfactual
+library grown without them; a matched comparison is the natural next
+study. (ii)~\emph{Roster bias}: nomination begins from the operator's field
+knowledge and the coauthor graphs of already-harvested schools, which
+biases the library toward the Monte Carlo/UQ lineage it started from; the
+cross-family elicitation runs are a partial correction, not a cure.
+(iii)~\emph{Bibliometric fragility}: author-disambiguation incidents (name
+collisions; merged OpenAlex author records) occurred and were caught only
+because the protocol requires resolving authors by identifiers from joint
+works and verifying works individually. (iv)~\emph{Staleness}: model
+training knowledge dates affiliations and ``current'' research lines; the
+roster convention is that all such fields are unverified until harvest
+time. (v)~\emph{Anchor coverage}: an anchor verifies a code path, not a
+skill's prose; a playbook can still misstate when a method applies.
+Adversarial multi-model review mitigates but does not close this gap ---
+in V\&V terms, Layer~1 is necessary but never sufficient for Layer~2.
+(vi)~\emph{Stylized demonstrations}: the numerical examples of
+Section~\ref{sec:toolkit} use simulated data-generating processes chosen
+so that ground truth is exact and the contrast is legible; they demonstrate
+the \emph{mechanism} of each failure and its repair, not the effect size a
+particular applied dataset will exhibit. Real problems will sit anywhere
+between the two columns of Table~\ref{tab:numbers}, and the honest claim is
+only that the naive column's failure modes are generic, not that its
+magnitudes are. (vii)~\emph{Cooperative-agent assumption}: the framework
+addresses statistical failure in pipelines whose components are fallible
+but not adversarial; prompt injection or an agent actively optimizing
+against its own guardrails is a security problem outside this paper's
+threat model.
+
+\section{Related work}\label{sec:related}
+
+The V\&V tradition this paper transplants is codified in
+\citet{roache1998} and \citet{oberkampf2010} for computational science and
+in \citet{sargent2013} for simulation models; our contribution is the
+mapping of its layers onto LLM-assisted statistical work and a concrete,
+skill-packaged implementation. The skill mechanism and its
+progressive-disclosure design are described in \citet{anthropic2025skills};
+tool learning and tool-use augmentation of language models are surveyed in
+\citet{schick2023,mialon2023}. The library differs from
+retrieval-augmented approaches \citep{lewis2020} in producing durable,
+versioned, executable procedure rather than answer-time context, and from
+automatic skill discovery in embodied agents \citep{wang2023voyager} in
+sourcing procedures from a scientific literature under human admission
+control. The anchor discipline is a relative of established
+statistical-software testing practice --- notably simulation-based
+calibration for Bayesian computation \citep{talts2018} and the tradition
+of oracle-based testing of statistical routines --- applied here at the
+level of an agent's entire procedural repertoire rather than a single
+sampler. Several skills package methods that are themselves recent
+responses to machine-learning-era validity problems: conformal prediction
+\citep{vovk2005,angelopoulos2023gentle}, prediction-powered inference
+\citep{angelopoulos2023ppi}, and anytime-valid inference
+\citep{ramdas2023}; the library's role is to make them \emph{procedurally
+available} to agents at the moment of use, with their assumptions checked
+rather than assumed.
+
+\section{Conclusion}\label{sec:conclusion}
+
+The reliability problem of LLM-assisted analysis is not that models
+hallucinate facts --- retrieval and citation discipline address that ---
+but that pipelines emit statistically invalid numbers with perfect
+confidence. The remedy proposed here is neither new models nor new
+benchmarks but an old discipline with a strong track record in exactly this
+situation: verification and validation, applied at three layers ---
+anchor-verified tooling, operating-characteristic-verified procedures, and
+runtime guarantee-or-alarm on every delivered number. The stochastics and UQ literature supplies both the
+machinery and, through its exactly solvable special cases, the anchors that
+make the machinery falsifiable; the agent-skill format supplies the carrier
+that makes it durable, versioned, and auditable; and curriculum harvesting
+from methodological schools supplies the economics that make the whole
+program feasible for a single operator in days rather than quarters. The
+measured gaps of Table~\ref{tab:numbers} are the argument in brief: the
+naive column is documented default behavior of unassisted pipelines today,
+and the distance to the other column is the loss available to anyone who
+leaves those failure modes unguarded. The framework's own contribution is
+not the statistics --- the methods are decades old and belong to their
+schools --- but making the guarded column agent-discoverable,
+runtime-audited, falsifiable by anyone, and alarmed at its known
+boundaries (Table~\ref{tab:perturb}).
+
+\medskip
+\noindent A closing note on provenance: the coauthor-graph stage of the
+harvesting program eventually surfaced the author's own doctoral work
+\citep{moraes2014} among the lineages mined --- the toolchain whose V\&V
+habits this library generalizes, already installed by construction.
+
+\section*{Acknowledgments}
+
+The skill library, the harvesting runs, the numerical demonstrations, and
+the drafting of this manuscript were carried out with substantial
+assistance from large language models (Anthropic's Claude family as root
+and mid-tier models; various providers' models via OpenRouter as tier-0
+leaves), under the orchestration and verification protocol described in
+the paper. All verdicts, roster decisions, and claims were reviewed by the
+human author, who takes full responsibility for the content.
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}

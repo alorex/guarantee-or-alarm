@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use this library or its demonstrations, please cite the paper."
+title: "Guarantee or Alarm: Statistical Verification for LLM-Assisted Decision Pipelines"
+authors:
+  - family-names: Moraes
+    given-names: Alvaro
+type: software
+year: 2026
+url: https://github.com/alorex/guarantee-or-alarm
+preferred-citation:
+  type: article
+  title: "Guarantee or Alarm: Statistical Verification for LLM-Assisted Decision Pipelines"
+  authors:
+    - family-names: Moraes
+      given-names: Alvaro
+  year: 2026
+  notes: "arXiv identifier to be added upon submission."

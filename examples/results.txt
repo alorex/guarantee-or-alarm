@@ -1,0 +1,38 @@
+ex1_conformal_gate.py: RESULT naive: defect_rate_among_accepted=0.0798 share_of_runs_over_5%_target=1.000 acceptance_fraction=0.760
+ex1_conformal_gate.py: RESULT gate: defect_rate_among_accepted=0.0276 share_of_runs_over_5%_target=0.053 acceptance_fraction=0.516
+ex1_conformal_gate.py: RESULT gate-drift: defect_rate_among_accepted=0.1198 share_of_runs_over_5%_target=0.857 acceptance_fraction=0.578
+ex1b_gate_monitor.py: RESULT monitored_gate: detection_rate=0.743 median_alarm_day=31 (drift at day 21) false_alarm_rate_no_drift=0.057 (target 0.05)
+ex2_anytime_valid.py: RESULT null: naive_false_alarm_rate=0.474 cs_false_alarm_rate=0.022 (target 0.05)
+ex2_anytime_valid.py: RESULT effect(mu=0.25): cs_detection_rate=0.971 median_stopping_day=117 (fixed-horizon design would wait 365)
+ex3_ppi.py: RESULT model-only: mean_estimate=0.1316 (truth 0.12) mean_CI_width=0.0050 coverage_90=0.000
+ex3_ppi.py: RESULT gold-only: mean_estimate=0.1200 (truth 0.12) mean_CI_width=0.0616 coverage_90=0.919
+ex3_ppi.py: RESULT ppi: mean_estimate=0.1199 (truth 0.12) mean_CI_width=0.0291 coverage_90=0.897
+ex3_ppi.py: RESULT ppi_vs_gold: width_ratio=0.472 effective_gold_multiplier=4.49
+ex4_boed.py: RESULT greedy-EIG: n_experiments_to_target=22 first_picks=[-1.0, 1.0, 0.0, 1.0, -1.0, 0.0]
+ex4_boed.py: RESULT random: median_n_to_target=37 iqr=(34,41)
+ex4_boed.py: RESULT center-only: n_to_target=None trace_after_120=2.002 (design singular: curvature and slope never identified)
+ex5_rare_event.py: RESULT exact: p=1.017e-06
+ex5_rare_event.py: RESULT naive: hits=1 estimate=1.000e-06 rel_std_err=99.2%
+ex5_rare_event.py: RESULT is:    estimate=1.019e-06 rel_std_err=0.23%
+ex5_rare_event.py: RESULT variance_reduction_factor=1.83e+05
+ex5_rare_event.py: RESULT n_for_10pct_rel_err: naive=9.8e+07 is=5.4e+02
+ex5b_nested_risk.py: RESULT M=  1: mean_estimate=0.2309 (truth 0.05) bias=+0.1809 rmse=0.1809 n_outer=20000
+ex5b_nested_risk.py: RESULT M= 10: mean_estimate=0.0820 (truth 0.05) bias=+0.0320 rmse=0.0327 n_outer=2000
+ex5b_nested_risk.py: RESULT M=100: mean_estimate=0.0530 (truth 0.05) bias=+0.0030 rmse=0.0176 n_outer=200
+ex6_selective.py: RESULT winners_curse: n_selected=7961 naive_90CI_coverage=0.000 conditional_90CI_coverage=0.904
+ex6_selective.py: RESULT shortlist_naive_top20: FDP=0.083 true_signals_found=18.4/50
+ex6_selective.py: RESULT shortlist_BH_q10: FDR=0.092 true_signals_found=20.1/50
+ex7_causal_ml.py: RESULT naive_diff_means: mean=6.23 sd=0.11 (truth 2.00)
+ex7_causal_ml.py: RESULT dml_aipw:        mean=2.00 sd=0.04 (truth 2.00)
+ex7_causal_ml.py: RESULT dml_hidden_confounder: mean=4.54 sd=0.10 (truth 2.00 -- identification, not machinery, is what fails; sensitivity analysis or escalation required)
+ex7_causal_ml.py: RESULT policy_treat-none: value_per_unit=+0.000
+ex7_causal_ml.py: RESULT policy_treat-all: value_per_unit=+0.501
+ex7_causal_ml.py: RESULT policy_targeted: value_per_unit=+1.001
+ex8_queue_output.py: RESULT naive: coverage_90=0.050 median_CI_width=0.16 (truth Wq=9.000000000000002)
+ex8_queue_output.py: RESULT batch: coverage_90=0.833 median_CI_width=2.70 (truth Wq=9.000000000000002)
+ex9_hierarchy.py: RESULT    all-cheap: cost_per_item=  1.00 defect_rate=0.1189 cost_per_correct=  1.13 cost_incl_downstream= 24.77
+ex9_hierarchy.py: RESULT all-frontier: cost_per_item= 25.00 defect_rate=0.0297 cost_per_correct= 25.77 cost_incl_downstream= 30.95
+ex9_hierarchy.py: RESULT      cascade: cost_per_item=  7.46 defect_rate=0.0149 cost_per_correct=  7.57 cost_incl_downstream= 10.44
+ex10_composition.py: RESULT ppi_daily_coverage_full_horizon=0.891 (nominal 0.90; valid through the drift)
+ex10_composition.py: RESULT model_only_abs_error: pre_drift=0.0241 post_drift=0.1262 (silent degradation)
+ex10_composition.py: RESULT monitor: detection_rate=0.890 median_alarm_day=41 (drift at day 31) false_alarm_rate_no_drift=0.055 (target 0.05)

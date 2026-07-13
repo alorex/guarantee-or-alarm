@@ -1,0 +1,19 @@
+name: anchors-and-examples
+on:
+  push:
+  pull_request:
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Compile all skill scripts
+        run: python -m compileall -q skills examples
+      - name: Run demonstrations and check against expected results
+        run: python examples/run_all.py --check
