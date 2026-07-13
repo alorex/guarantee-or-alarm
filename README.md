@@ -29,7 +29,9 @@ publication). Every number in the paper reproduces from `examples/`.
 
 ## Quickstart
 
-Requires Python ≥ 3.9, standard library only. No pip installs.
+Requires Python ≥ 3.12, standard library only. No pip installs. (The scripts
+run on older Pythons, but `expected_results.txt` is pinned to the ≥ 3.12
+`random.binomialvariate` sampling path, so `--check` requires ≥ 3.12.)
 
 ```bash
 cd examples

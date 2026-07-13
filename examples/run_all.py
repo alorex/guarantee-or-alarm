@@ -4,8 +4,9 @@
   python run_all.py --check   # additionally diff against expected_results.txt
                               # (exit 1 on mismatch)
 
-Pure-stdlib, fixed seeds; output is deterministic across platforms, so the
-check is an exact comparison.
+Pure-stdlib, fixed seeds; output is deterministic across platforms on
+Python >= 3.12 (expected_results.txt is pinned to the >= 3.12
+random.binomialvariate sampling path), so the check is an exact comparison.
 """
 import pathlib
 import subprocess
@@ -21,6 +22,11 @@ SCRIPTS = [
 
 
 def main() -> int:
+    if "--check" in sys.argv and sys.version_info < (3, 12):
+        print("CHECK requires Python >= 3.12: expected_results.txt is pinned "
+              "to the random.binomialvariate sampling path introduced in 3.12; "
+              "older versions produce different (still valid) draws.")
+        return 1
     lines = []
     for script in SCRIPTS:
         print(f"== {script}", flush=True)
