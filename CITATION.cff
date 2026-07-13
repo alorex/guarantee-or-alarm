@@ -7,6 +7,13 @@ authors:
 type: software
 year: 2026
 url: https://github.com/alorex/guarantee-or-alarm
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.21282588
+    description: "Version DOI of the archived submission release (v1.0.0, published as alorex/vv-llm-skills)"
+  - type: doi
+    value: 10.5281/zenodo.21282587
+    description: "Concept DOI (all versions of the archived artifact)"
 preferred-citation:
   type: article
   title: "Guarantee or Alarm: Statistical Verification for LLM-Assisted Decision Pipelines"
@@ -14,4 +21,4 @@ preferred-citation:
     - family-names: Moraes
       given-names: Alvaro
   year: 2026
-  notes: "arXiv identifier to be added upon submission."
+  notes: "arXiv identifier to be added upon announcement. The submission-release artifact is archived at https://doi.org/10.5281/zenodo.21282588."

@@ -15,7 +15,15 @@ three-layer framework:
    a stated guarantee — of a stated kind, under stated assumptions, feeding
    a named loss — or a machine-readable alarm fires and the case escalates.
 
-Companion repository for the paper *"Guarantee or Alarm: Statistical
+> **Canonical artifact:** the version of this library cited by the paper is
+> archived at [`alorex/vv-llm-skills`](https://github.com/alorex/vv-llm-skills)
+> (release v1.0.0, DOI
+> [10.5281/zenodo.21282588](https://doi.org/10.5281/zenodo.21282588); concept
+> DOI [10.5281/zenodo.21282587](https://doi.org/10.5281/zenodo.21282587)).
+> **Cite that DOI for reproducibility.** This repository is the development
+> home going forward and may diverge from the archived submission release.
+
+Development companion for the paper *"Guarantee or Alarm: Statistical
 Verification for LLM-Assisted Decision Pipelines"* (arXiv link upon
 publication). Every number in the paper reproduces from `examples/`.
 
